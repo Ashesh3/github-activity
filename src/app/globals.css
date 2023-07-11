@@ -1,0 +1,44 @@
+@import "antd/dist/reset.css";
+
+body {
+  background-color: #f8f8f8;
+}
+*,
+::before,
+::after {
+  box-sizing: border-box; /* 1 */
+  border-width: 0; /* 2 */
+  border-style: solid; /* 2 */
+  border-color: theme("borderColor.DEFAULT", currentColor); /* 2 */
+}
+
+::before,
+::after {
+  --tw-content: "";
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+ul.ant-timeline div.ant-timeline-item-label {
+  width: 40% !important;
+}
+
+ul.ant-timeline div.ant-timeline-item-content {
+  left: calc(42% - 4px) !important;
+  width: calc(59% - 4px) !important;
+}
+
+ul.ant-timeline div.ant-timeline-item-tail,
+div.ant-timeline-item-head {
+  left: 42% !important;
+}
+
+ul.ant-timeline div.ant-timeline-item-last {
+  padding-bottom: 2px !important;
+}
+
+ul.ant-timeline .ant-timeline-item-last > .ant-timeline-item-content {
+  min-height: 10px !important;
+}
