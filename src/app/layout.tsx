@@ -1,15 +1,9 @@
-"use client";
+"use client"
 
 import './globals.css'
-import type { Metadata } from 'next'
 import { useState } from "react";
 import { createCache, extractStyle, StyleProvider } from "@ant-design/cssinjs";
 import { useServerInsertedHTML } from "next/navigation";
-
-export const metadata: Metadata = {
-  title: 'GitHub Activity Report',
-  description: 'Generate a report of your GitHub activity',
-}
 
 export default function RootLayout({
   children,
@@ -18,7 +12,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <head />
+      <head>
+        <title>GitHub Activity Report</title>
+        <meta name="description" content="Generate a report of your GitHub activity" />
+
+      </head>
       <body>
         <StyleProviderLayout>{children}</StyleProviderLayout>
       </body>
