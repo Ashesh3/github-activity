@@ -502,11 +502,12 @@ export default function Home() {
                   items={activity.merged.map((activity: any) => ({
                     label: (
                       <div className="flex justify-between">
-                        <p className="italic">
+                        <a href={activity.html_url} target="_blank" rel="noreferrer" className="italic">
                           {activity.repository_url?.split("/repos/")?.[1] ||
                             activity.repository.full_name ||
                             "-" + activity.type}
-                        </p>
+                          <span className="font-medium">{"#" + (activity.number || activity.sha?.slice(0, 6))}</span>
+                        </a>
                         {"  "}
                         <p>{dayjs(activity.assigned_at || activity.created_at).format("Do MMMM YYYY h:mm A")}</p>
                       </div>
