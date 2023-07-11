@@ -183,6 +183,18 @@ export default function Home() {
     }
   };
 
+  async function getLinkedPRs(issue_url: string) {
+    if (!issue_url) return [];
+    const linkedPRQuery = await fetch("/api/linkedprs", {
+      method: "POST",
+      body: JSON.stringify({
+        url: issue_url,
+      }),
+    });
+    const linkedPRRes = await linkedPRQuery.json();
+    return linkedPRRes;
+  }
+
   async function fetchGithubStats() {
     if (!usernameField.value) {
       setUsernameField({
@@ -237,7 +249,7 @@ export default function Home() {
         issue.type = "issue-assigned";
       }
 
-      const assignedIssues = [];
+      const assignedIssues: any = [];
 
       for (const issue of issuesAssignedDataRes.items) {
         const events = await fetch(issue.events_url);
@@ -251,6 +263,7 @@ export default function Home() {
             assignedIssues.push({
               ...issue,
               assigned_at: event.created_at,
+              linked_pr: await getLinkedPRs(issue.html_url),
             });
             break;
           }
@@ -293,7 +306,7 @@ export default function Home() {
       setActivity({
         prs: prDataRes.items,
         issues_created: issuesDataRes.items,
-        issues_assigned: issuesAssignedDataRes.items,
+        issues_assigned: assignedIssues,
         merged: mergedTimeline,
         commits: commits,
         error: "",
@@ -338,6 +351,11 @@ export default function Home() {
         );
     }
   }
+
+  function getRepoName(url: string) {
+    return url.replace("https://github.com/", "")?.split("/")?.[1] || "";
+  }
+
   function getEODMessage() {
     let eodMessage = EOD_TEMPLATE;
     eodMessage = eodMessage.replace("{{DATE}}", dayjs().format("DD/MM/YYYY"));
@@ -348,21 +366,23 @@ export default function Home() {
     if (checkedList.includes("Pull Requests Created")) {
       todayActivities = todayActivities.concat(
         activity.prs.map((pr: any) => {
-          return `- Made [PR #${pr.number}](${pr.html_url}): ${pr.title}`;
+          return `- Made PR [${getRepoName(pr.html_url)}#${pr.number}](${pr.html_url}): ${pr.title}`;
         })
       );
     }
     if (checkedList.includes("Issues Created")) {
       todayActivities = todayActivities.concat(
         activity.issues_created.map((issue: any) => {
-          return `- Created [Issue #${issue.number}](${issue.html_url}): ${issue.title}`;
+          return `- Created issue [${getRepoName(issue.html_url)}#${issue.number}](${issue.html_url}): ${issue.title}`;
         })
       );
     }
     if (checkedList.includes("Commits Made")) {
       todayActivities = todayActivities.concat(
         activity.commits.map((commit: any) => {
-          return `- Comitted [${commit.sha?.slice(0, 7)}](${commit.html_url}): ${commit.title}`;
+          return `- Comitted [${getRepoName(commit.html_url)}#${commit.sha?.slice(0, 7)}](${commit.html_url}): ${
+            commit.title
+          }`;
         })
       );
     }
@@ -370,11 +390,13 @@ export default function Home() {
     eodMessage = eodMessage.replace("{{TODAY_ACTIVITIES}}", todayActivities.join("\n"));
 
     let tomorrowActivities: string[] = [];
-
+    const unfinishedIssues = activity.issues_assigned.filter(
+      (issue: any) => !issue.linked_pr?.length && issue.state === "open"
+    );
     if (checkedList.includes("Issues Assigned")) {
       tomorrowActivities = tomorrowActivities.concat(
-        activity.issues_assigned.map((issue: any) => {
-          return `- [Issue #${issue.number}](${issue.html_url}): ${issue.title}`;
+        unfinishedIssues.map((issue: any) => {
+          return `- Work on issue [${getRepoName(issue.html_url)}#${issue.number}](${issue.html_url}): ${issue.title}`;
         })
       );
     }
@@ -399,6 +421,7 @@ export default function Home() {
           </Typography>
           <Space.Compact className="w-full">
             <Input
+              autoComplete="off"
               placeholder="GitHub username"
               className="w-1/4"
               value={usernameField.value}
