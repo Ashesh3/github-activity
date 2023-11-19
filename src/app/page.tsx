@@ -358,7 +358,15 @@ export default function Home() {
 
   function getEODMessage() {
     let eodMessage = EOD_TEMPLATE;
-    eodMessage = eodMessage.replace("{{DATE}}", dayjs().format("DD/MM/YYYY"));
+    if (dayjs(dateField.value.startDate).format("YYYY-MM-DD") === dayjs(dateField.value.endDate).format("YYYY-MM-DD"))
+      eodMessage = eodMessage.replace("{{DATE}}", dayjs(dateField.value.startDate).format("DD/MM/YYYY"));
+    else
+      eodMessage = eodMessage.replace(
+        "{{DATE}}",
+        dayjs(dateField.value.startDate).format("DD/MM/YYYY") +
+          " - " +
+          dayjs(dateField.value.endDate).format("DD/MM/YYYY")
+      );
     eodMessage = eodMessage.replace("{{ORGANIZATION}}", orgFilter.value);
 
     let todayActivities: string[] = [];
