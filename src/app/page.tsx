@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Button,
   Card,
@@ -15,6 +15,7 @@ import {
   notification,
   Tooltip,
   Typography,
+  Modal,
 } from "antd";
 import Icon, {
   CheckCircleTwoTone,
@@ -22,7 +23,9 @@ import Icon, {
   InfoCircleTwoTone,
   LoadingOutlined,
   QuestionCircleTwoTone,
+  SaveOutlined,
   SearchOutlined,
+  SettingOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { Dayjs } from "dayjs";
@@ -33,6 +36,7 @@ import { CheckboxValueType } from "antd/es/checkbox/Group";
 import { CheckboxChangeEvent } from "antd/es/checkbox";
 import MarkdownPreview from "@uiw/react-markdown-preview";
 import TextArea from "antd/es/input/TextArea";
+import { useSearchParams } from 'next/navigation'
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -98,10 +102,37 @@ export default function Home() {
   });
 
   const includeInEOD = ["Pull Requests Created", "Issues Created", "Issues Assigned", "Commits Made"];
+  const EODSettings = ["Group by day"];
   const CheckboxGroup = Checkbox.Group;
   const [checkedList, setCheckedList] = useState<CheckboxValueType[]>(includeInEOD);
+  const [eodSettingsCheckedList, setEodSettingsCheckedList] = useState<CheckboxValueType[]>([]);
   const [indeterminate, setIndeterminate] = useState(false);
   const [checkAll, setCheckAll] = useState(true);
+  const [showFetchSettings, setShowFetchSettings] = useState(false);
+  const [showEODSettings, setShowEODSettings] = useState(false);
+  const [githubTokenInput, setGithubTokenInput] = useState("");
+  const [settings, setSettings] = useState({
+    fetchGithubToken: githubTokenInput,
+    splitByDay: false,
+  });
+
+  const searchParams = useSearchParams()
+
+  const ghfetch = (url: string) => {
+    if (!settings.fetchGithubToken) return fetch(url);
+    return fetch(url, {
+      headers: {
+        Authorization: `token ${settings.fetchGithubToken}`,
+      },
+    });
+  };
+
+  useEffect(() => {
+    const githubToken = localStorage.getItem("githubToken");
+    if (githubToken) {
+      setGithubTokenInput(githubToken);
+    }
+  }, []);
 
   const onChange = (list: CheckboxValueType[]) => {
     setCheckedList(list);
@@ -109,10 +140,31 @@ export default function Home() {
     setCheckAll(list.length === includeInEOD.length);
   };
 
+  const onEodSettingChange = (list: CheckboxValueType[]) => {
+    setEodSettingsCheckedList(list);
+  };
+
   const onCheckAllChange = (e: CheckboxChangeEvent) => {
     setCheckedList(e.target.checked ? includeInEOD : []);
     setIndeterminate(false);
     setCheckAll(e.target.checked);
+  };
+
+  const saveFetchSettings = () => {
+    setSettings({
+      ...settings,
+      fetchGithubToken: githubTokenInput,
+    });
+    localStorage.setItem("githubToken", githubTokenInput);
+    setShowFetchSettings(false);
+  };
+
+  const saveEODSettings = () => {
+    setSettings({
+      ...settings,
+      splitByDay: eodSettingsCheckedList.includes("Group by day"),
+    });
+    setShowEODSettings(false);
   };
 
   const [fetchBtnState, setFetchBtnState] = useState<"idle" | "loading" | "success" | "error">("idle");
@@ -158,7 +210,7 @@ export default function Home() {
       state: "checking",
     });
     try {
-      const orgQuery = await fetch(`https://api.github.com/users/${usernameField.value}/orgs`);
+      const orgQuery = await ghfetch(`https://api.github.com/users/${usernameField.value}/orgs`);
       const orgRes = await orgQuery.json();
       if (orgRes?.message === "Not Found") {
         setUsernameField({
@@ -222,7 +274,7 @@ export default function Home() {
       orgFilterQuery = `+org:${orgFilter.value}`;
     }
     try {
-      const issuesData = await fetch(
+      const issuesData = await ghfetch(
         `https://api.github.com/search/issues?q=author:${usernameField.value}+is:issue+created:${dateField.value.startDate}..${dateField.value.endDate}${orgFilterQuery}&per_page=100`
       );
       const issuesDataRes = await issuesData.json();
@@ -231,7 +283,7 @@ export default function Home() {
         issue.type = "issue-created";
       }
 
-      const prData = await fetch(
+      const prData = await ghfetch(
         `https://api.github.com/search/issues?q=author:${usernameField.value}+is:pr+created:${dateField.value.startDate}..${dateField.value.endDate}${orgFilterQuery}&per_page=100`
       );
       const prDataRes = await prData.json();
@@ -240,7 +292,7 @@ export default function Home() {
         pr.type = "pr-created";
       }
 
-      const issuesAssignedData = await fetch(
+      const issuesAssignedData = await ghfetch(
         `https://api.github.com/search/issues?q=assignee:${usernameField.value}+is:issue+created:${dateField.value.startDate}..${dateField.value.endDate}${orgFilterQuery}&per_page=100`
       );
       const issuesAssignedDataRes = await issuesAssignedData.json();
@@ -252,7 +304,7 @@ export default function Home() {
       const assignedIssues: any = [];
 
       for (const issue of issuesAssignedDataRes.items) {
-        const events = await fetch(issue.events_url);
+        const events = await ghfetch(issue.events_url);
         const eventsRes = await events.json();
 
         for (const event of eventsRes) {
@@ -270,7 +322,7 @@ export default function Home() {
         }
       }
 
-      const commitsData = await fetch(
+      const commitsData = await ghfetch(
         `https://api.github.com/search/commits?q=author:${usernameField.value}+committer-date:${dateField.value.startDate}..${dateField.value.endDate}${orgFilterQuery}&per_page=100`
       );
       const commitsDataRes = await commitsData.json();
@@ -282,9 +334,9 @@ export default function Home() {
       for (const commit of myCommits) {
         const commit_message_lines = commit.commit.message.split("\n");
         commit.type = "commit-created";
-        commit.created_at = commit.commit.committer.date;
         commit.title = commit_message_lines[0];
-        const linkedPRQuery = await fetch(commit.url + "/pulls");
+        commit.created_at = commit.commit.committer.date;
+        const linkedPRQuery = await ghfetch(commit.url + "/pulls");
         const linkedPRRes = await linkedPRQuery.json();
         let isLinkedPRPresent = false;
         for (const linkedPR of linkedPRRes) {
@@ -358,14 +410,32 @@ export default function Home() {
 
   function getEODMessage() {
     let eodMessage = EOD_TEMPLATE;
-    eodMessage = eodMessage.replace("{{DATE}}", dayjs().format("DD/MM/YYYY"));
+    if (dayjs(dateField.value.startDate).format("YYYY-MM-DD") === dayjs(dateField.value.endDate).format("YYYY-MM-DD"))
+      eodMessage = eodMessage.replace("{{DATE}}", dayjs(dateField.value.startDate).format("DD/MM/YYYY"));
+    else
+      eodMessage = eodMessage.replace(
+        "{{DATE}}",
+        dayjs(dateField.value.startDate).format("DD/MM/YYYY") +
+          " - " +
+          dayjs(dateField.value.endDate).format("DD/MM/YYYY")
+      );
     eodMessage = eodMessage.replace("{{ORGANIZATION}}", orgFilter.value);
 
     let todayActivities: string[] = [];
+    const groupedActivities: { [key: string]: string[] } = {};
+
+    const start = dayjs(dateField.value.startDate);
+    const end = dayjs(dateField.value.endDate);
+    for (let m = start; m.isBefore(end); m = m.add(1, "days")) {
+      groupedActivities[m.format("YYYY-MM-DD")] = [];
+    }
 
     if (checkedList.includes("Pull Requests Created")) {
       todayActivities = todayActivities.concat(
         activity.prs.map((pr: any) => {
+          groupedActivities[dayjs(pr.created_at).format("YYYY-MM-DD")].push(
+            `- Made PR [${getRepoName(pr.html_url)}#${pr.number}](${pr.html_url}): ${pr.title}`
+          );
           return `- Made PR [${getRepoName(pr.html_url)}#${pr.number}](${pr.html_url}): ${pr.title}`;
         })
       );
@@ -373,6 +443,9 @@ export default function Home() {
     if (checkedList.includes("Issues Created")) {
       todayActivities = todayActivities.concat(
         activity.issues_created.map((issue: any) => {
+          groupedActivities[dayjs(issue.created_at).format("YYYY-MM-DD")].push(
+            `- Created issue [${getRepoName(issue.html_url)}#${issue.number}](${issue.html_url}): ${issue.title}`
+          );
           return `- Created issue [${getRepoName(issue.html_url)}#${issue.number}](${issue.html_url}): ${issue.title}`;
         })
       );
@@ -380,6 +453,11 @@ export default function Home() {
     if (checkedList.includes("Commits Made")) {
       todayActivities = todayActivities.concat(
         activity.commits.map((commit: any) => {
+          groupedActivities[dayjs(commit.created_at).format("YYYY-MM-DD")].push(
+            `- Comitted [${getRepoName(commit.html_url)}#${commit.sha?.slice(0, 7)}](${commit.html_url}): ${
+              commit.title
+            }`
+          );
           return `- Comitted [${getRepoName(commit.html_url)}#${commit.sha?.slice(0, 7)}](${commit.html_url}): ${
             commit.title
           }`;
@@ -387,7 +465,17 @@ export default function Home() {
       );
     }
 
-    eodMessage = eodMessage.replace("{{TODAY_ACTIVITIES}}", todayActivities.join("\n"));
+    let groupedActivitiesText = "";
+
+    if (eodSettingsCheckedList.includes("Group by day")) {
+      Object.keys(groupedActivities).forEach((date) => {
+        if (groupedActivities[date].length === 0) return;
+        groupedActivitiesText += `**${dayjs(date).format("DD/MM/YYYY")}**\n${groupedActivities[date].join("\n")}\n\n`;
+      });
+      eodMessage = eodMessage.replace("{{TODAY_ACTIVITIES}}", "\n" + groupedActivitiesText.trimEnd());
+    } else {
+      eodMessage = eodMessage.replace("{{TODAY_ACTIVITIES}}", todayActivities.join("\n"));
+    }
 
     let tomorrowActivities: string[] = [];
     const unfinishedIssues = activity.issues_assigned.filter(
@@ -421,7 +509,6 @@ export default function Home() {
           </Typography>
           <Space.Compact className="w-full">
             <Input
-              autoComplete="off"
               placeholder="GitHub username"
               className="w-1/4"
               value={usernameField.value}
@@ -464,6 +551,14 @@ export default function Home() {
               format="DD/MM/YYYY HH:mm"
               onChange={onRangeChange}
             />
+            <Button
+              onClick={() => {
+                setShowFetchSettings(true);
+              }}
+              disabled={fetchBtnState === "loading"}
+            >
+              <SettingOutlined />
+            </Button>
             <Button
               type="primary"
               icon={<SearchOutlined />}
@@ -525,20 +620,32 @@ export default function Home() {
               <Divider className="my-1" />
               <div className="flex flex-col mb-3">
                 <p className="text-md text-gray-500 font-semibold mt-2">Include in EOD</p>
-                <div>
-                  <Checkbox indeterminate={indeterminate} onChange={onCheckAllChange} checked={checkAll}>
-                    |
-                  </Checkbox>
-                  <CheckboxGroup options={includeInEOD} value={checkedList} onChange={onChange} />
-                  <Button
-                    type="primary"
-                    className="float-right"
-                    onClick={() => {
-                      setEODMessage(getEODMessage());
-                    }}
-                  >
-                    Generate EOD
-                  </Button>
+                <div className="grid grid-cols-4">
+                  <div className="col-span-3">
+                    <Checkbox indeterminate={indeterminate} onChange={onCheckAllChange} checked={checkAll}>
+                      |
+                    </Checkbox>
+                    <CheckboxGroup options={includeInEOD} value={checkedList} onChange={onChange} />
+                  </div>
+                  <Space.Compact className="col-span-1 mr-0 ml-auto">
+                    <Button
+                      type="primary"
+                      icon={<SettingOutlined />}
+                      onClick={() => {
+                        setEodSettingsCheckedList(settings.splitByDay ? ["Group by day"] : []);
+                        setShowEODSettings(true);
+                      }}
+                    />
+                    <Button
+                      type="primary"
+                      className="float-right"
+                      onClick={() => {
+                        setEODMessage(getEODMessage());
+                      }}
+                    >
+                      Generate EOD
+                    </Button>
+                  </Space.Compact>
                 </div>
               </div>
             </>
@@ -563,6 +670,47 @@ export default function Home() {
             </div>
           )}
         </Card>
+        <Modal
+          title="Fetch Settings"
+          open={showFetchSettings}
+          onOk={saveFetchSettings}
+          onCancel={() => {
+            setShowFetchSettings(false);
+          }}
+          footer={[
+            <Button type="primary" key="back" onClick={saveFetchSettings} icon={<SaveOutlined />}>
+              Save
+            </Button>,
+          ]}
+        >
+          <Text>GitHub Access Token</Text>
+          <Input
+            placeholder="ghp_**********"
+            className="mt-2"
+            value={githubTokenInput}
+            onChange={(e) => {
+              setGithubTokenInput(e.target.value);
+            }}
+          />
+        </Modal>
+        <Modal
+          title="EOD Settings"
+          open={showEODSettings}
+          onOk={() => {
+            saveEODSettings();
+            setShowEODSettings(false);
+          }}
+          onCancel={() => {
+            setShowEODSettings(false);
+          }}
+          footer={[
+            <Button type="primary" key="back" onClick={saveEODSettings} icon={<SaveOutlined />}>
+              Save
+            </Button>,
+          ]}
+        >
+          <CheckboxGroup options={EODSettings} value={eodSettingsCheckedList} onChange={onEodSettingChange} />
+        </Modal>
       </div>
     </>
   );
