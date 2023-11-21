@@ -36,7 +36,7 @@ import { CheckboxValueType } from "antd/es/checkbox/Group";
 import { CheckboxChangeEvent } from "antd/es/checkbox";
 import MarkdownPreview from "@uiw/react-markdown-preview";
 import TextArea from "antd/es/input/TextArea";
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams } from "next/navigation";
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -116,7 +116,7 @@ export default function Home() {
     splitByDay: false,
   });
 
-  const searchParams = useSearchParams()
+  const searchParams = useSearchParams();
 
   const ghfetch = (url: string) => {
     if (!settings.fetchGithubToken) return fetch(url);
@@ -433,7 +433,9 @@ export default function Home() {
     if (checkedList.includes("Pull Requests Created")) {
       todayActivities = todayActivities.concat(
         activity.prs.map((pr: any) => {
-          groupedActivities[dayjs(pr.created_at).format("YYYY-MM-DD")].push(
+          const key = dayjs(pr.created_at).format("YYYY-MM-DD");
+          groupedActivities[key] ??= [];
+          groupedActivities[key].push(
             `- Made PR [${getRepoName(pr.html_url)}#${pr.number}](${pr.html_url}): ${pr.title}`
           );
           return `- Made PR [${getRepoName(pr.html_url)}#${pr.number}](${pr.html_url}): ${pr.title}`;
@@ -443,7 +445,9 @@ export default function Home() {
     if (checkedList.includes("Issues Created")) {
       todayActivities = todayActivities.concat(
         activity.issues_created.map((issue: any) => {
-          groupedActivities[dayjs(issue.created_at).format("YYYY-MM-DD")].push(
+          const key = dayjs(issue.created_at).format("YYYY-MM-DD");
+          groupedActivities[key] ??= [];
+          groupedActivities[key].push(
             `- Created issue [${getRepoName(issue.html_url)}#${issue.number}](${issue.html_url}): ${issue.title}`
           );
           return `- Created issue [${getRepoName(issue.html_url)}#${issue.number}](${issue.html_url}): ${issue.title}`;
@@ -453,7 +457,9 @@ export default function Home() {
     if (checkedList.includes("Commits Made")) {
       todayActivities = todayActivities.concat(
         activity.commits.map((commit: any) => {
-          groupedActivities[dayjs(commit.created_at).format("YYYY-MM-DD")].push(
+          const key = dayjs(commit.created_at).format("YYYY-MM-DD");
+          groupedActivities[key] ??= [];
+          groupedActivities[key].push(
             `- Comitted [${getRepoName(commit.html_url)}#${commit.sha?.slice(0, 7)}](${commit.html_url}): ${
               commit.title
             }`
