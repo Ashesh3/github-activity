@@ -36,7 +36,7 @@ import { CheckboxValueType } from "antd/es/checkbox/Group";
 import { CheckboxChangeEvent } from "antd/es/checkbox";
 import MarkdownPreview from "@uiw/react-markdown-preview";
 import TextArea from "antd/es/input/TextArea";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -86,7 +86,11 @@ export default function Home() {
     error: "",
   });
 
-  const [orgFilter, setOrgFilter] = useState({
+  const [orgFilter, setOrgFilter] = useState<{
+    list: { login: string }[];
+    value: string;
+    error: string;
+  }>({
     list: [],
     value: "",
     error: "",
@@ -117,6 +121,8 @@ export default function Home() {
   });
 
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const { replace } = useRouter();
 
   const ghfetch = (url: string) => {
     if (!settings.fetchGithubToken) return fetch(url);
@@ -132,6 +138,28 @@ export default function Home() {
     if (githubToken) {
       setGithubTokenInput(githubToken);
     }
+    async function prefill() {
+      if (searchParams.get("username")) {
+        const username = searchParams.get("username") ?? "";
+        setUsernameField({
+          ...usernameField,
+          value: username,
+        });
+        const org = searchParams.get("org") ?? "";
+        await checkGithubUsername(username, org);
+      }
+      if (searchParams.get("days")) {
+        const days = parseInt(searchParams.get("days") ?? "0");
+        setDateField({
+          ...dateField,
+          value: {
+            startDate: dayjs().add(-days, "d").toISOString(),
+            endDate: dayjs().toISOString(),
+          },
+        });
+      }
+    }
+    prefill();
   }, []);
 
   const onChange = (list: CheckboxValueType[]) => {
@@ -196,43 +224,59 @@ export default function Home() {
 
   const [EODMessage, setEODMessage] = useState("");
 
-  const checkGithubUsername = async () => {
-    if (!usernameField.value) {
+  const checkGithubUsername = async (username: string, defaultOrg = "") => {
+    if (!username) {
       setUsernameField({
         ...usernameField,
         error: "",
+        value: username,
         state: "empty",
       });
-      return;
+      return false;
     }
     setUsernameField({
       ...usernameField,
+      value: username,
       state: "checking",
     });
     try {
-      const orgQuery = await ghfetch(`https://api.github.com/users/${usernameField.value}/orgs`);
+      const orgQuery = await ghfetch(`https://api.github.com/users/${username}/orgs`);
       const orgRes = await orgQuery.json();
       if (orgRes?.message === "Not Found") {
         setUsernameField({
           ...usernameField,
+          value: username,
           error: "Username not found",
           state: "checked",
         });
+        return false;
       } else {
-        setOrgFilter({
-          value: "",
-          list: orgRes.map((org: { login: string }) => ({ login: org.login })),
-          error: "",
-        });
+        const orgList = orgRes.map((org: { login: string }) => ({ login: org.login }));
+        if (defaultOrg && orgList.find((org: { login: string }) => org.login === defaultOrg)) {
+          setOrgFilter({
+            value: defaultOrg,
+            list: orgList,
+            error: "",
+          });
+        } else {
+          setOrgFilter({
+            value: "",
+            list: orgList,
+            error: "",
+          });
+        }
         setUsernameField({
           ...usernameField,
+          value: username,
           error: "",
           state: "checked",
         });
+        return true;
       }
     } catch (error: any) {
       notify("error", "Error", "Something went wrong while fetching your organizations\n" + error.message);
     }
+    return false;
   };
 
   async function getLinkedPRs(issue_url: string) {
@@ -268,6 +312,12 @@ export default function Home() {
     }
 
     notify("info", "Fetching", "Fetching your GitHub stats");
+    const params = new URLSearchParams(searchParams);
+    const numDays = dayjs(dateField.value.endDate).diff(dayjs(dateField.value.startDate), "day");
+    params.set("username", usernameField.value);
+    params.set("org", orgFilter.value);
+    params.set("days", numDays.toString());
+    replace(`${pathname}?${params.toString()}`);
     setFetchBtnState("loading");
     let orgFilterQuery = "";
     if (orgFilter.value) {
@@ -532,7 +582,9 @@ export default function Home() {
                     <CheckCircleTwoTone twoToneColor="#52c41a" />
                   ))) || <span />
               }
-              onBlur={checkGithubUsername}
+              onBlur={() => {
+                checkGithubUsername(usernameField.value);
+              }}
               onFocus={() => {
                 setUsernameField({ ...usernameField, state: "focus" });
               }}
@@ -545,6 +597,7 @@ export default function Home() {
               onChange={(e) => {
                 setOrgFilter({ ...orgFilter, value: e });
               }}
+              value={orgFilter.value}
               filterOption={(input, option) => (option?.label ?? "").toLowerCase().includes(input.toLowerCase())}
               options={orgFilter.list.map((org: { login: string }) => ({ label: org.login, value: org.login }))}
               disabled={usernameField.state !== "checked" || orgFilter.list.length === 0}
@@ -556,6 +609,10 @@ export default function Home() {
               status={dateField.error ? "error" : undefined}
               format="DD/MM/YYYY HH:mm"
               onChange={onRangeChange}
+              value={[
+                dateField.value.startDate ? dayjs(dateField.value.startDate) : null,
+                dateField.value.endDate ? dayjs(dateField.value.endDate) : null,
+              ]}
             />
             <Button
               onClick={() => {
