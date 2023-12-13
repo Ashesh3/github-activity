@@ -660,7 +660,13 @@ export default function Home() {
                   items={activity.merged.map((activity: any) => ({
                     label: (
                       <div className="flex justify-between">
-                        <a href={activity.html_url} target="_blank" rel="noreferrer" className="italic">
+                        <a
+                          href={activity.html_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="italic w-[182px] whitespace-nowrap overflow-hidden overflow-ellipsis text-left"
+                          style={{ direction: "rtl" }}
+                        >
                           {activity.repository_url?.split("/repos/")?.[1] ||
                             activity.repository.full_name ||
                             "-" + activity.type}
