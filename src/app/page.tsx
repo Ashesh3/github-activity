@@ -124,13 +124,19 @@ export default function Home() {
   const pathname = usePathname();
   const { replace } = useRouter();
 
-  const ghfetch = (url: string) => {
-    if (!settings.fetchGithubToken) return fetch(url);
-    return fetch(url, {
-      headers: {
-        Authorization: `token ${settings.fetchGithubToken}`,
-      },
+  const ghfetch = async (url: string) => {
+    const headers: { [key: string]: string } = {};
+    if (settings.fetchGithubToken) {
+      headers["Authorization"] = `token ${settings.fetchGithubToken}`;
+    }
+    const res = await fetch(url, {
+      headers,
     });
+    const data = await res.json();
+    if (data?.message) {
+      throw new Error(data.message);
+    }
+    return data;
   };
 
   useEffect(() => {
@@ -244,8 +250,7 @@ export default function Home() {
       state: "checking",
     });
     try {
-      const orgQuery = await ghfetch(`https://api.github.com/users/${username}/orgs`);
-      const orgRes = await orgQuery.json();
+      const orgRes = await ghfetch(`https://api.github.com/users/${username}/orgs`);
       if (orgRes?.message === "Not Found") {
         setUsernameField({
           ...usernameField,
@@ -278,7 +283,7 @@ export default function Home() {
         return true;
       }
     } catch (error: any) {
-      notify("error", "Error", "Something went wrong while fetching your organizations\n" + error.message);
+      notify("error", "Error", "Something went wrong while fetching your organizations: " + error.message);
     }
     return false;
   };
@@ -331,35 +336,31 @@ export default function Home() {
       const issuesData = await ghfetch(
         `https://api.github.com/search/issues?q=author:${usernameField.value}+is:issue+created:${dateField.value.startDate}..${dateField.value.endDate}${orgFilterQuery}&per_page=100`
       );
-      const issuesDataRes = await issuesData.json();
 
-      for (const issue of issuesDataRes.items) {
+      for (const issue of issuesData.items) {
         issue.type = "issue-created";
       }
 
       const prData = await ghfetch(
         `https://api.github.com/search/issues?q=author:${usernameField.value}+is:pr+created:${dateField.value.startDate}..${dateField.value.endDate}${orgFilterQuery}&per_page=100`
       );
-      const prDataRes = await prData.json();
 
-      for (const pr of prDataRes.items) {
+      for (const pr of prData.items) {
         pr.type = "pr-created";
       }
 
       const issuesAssignedData = await ghfetch(
         `https://api.github.com/search/issues?q=assignee:${usernameField.value}+is:issue+created:${dateField.value.startDate}..${dateField.value.endDate}${orgFilterQuery}&per_page=100`
       );
-      const issuesAssignedDataRes = await issuesAssignedData.json();
 
-      for (const issue of issuesAssignedDataRes.items) {
+      for (const issue of issuesAssignedData.items) {
         issue.type = "issue-assigned";
       }
 
       const assignedIssues: any = [];
 
-      for (const issue of issuesAssignedDataRes.items) {
-        const events = await ghfetch(issue.events_url);
-        const eventsRes = await events.json();
+      for (const issue of issuesAssignedData.items) {
+        const eventsRes = await ghfetch(issue.events_url);
 
         for (const event of eventsRes) {
           if (
@@ -379,8 +380,7 @@ export default function Home() {
       const commitsData = await ghfetch(
         `https://api.github.com/search/commits?q=author:${usernameField.value}+committer-date:${dateField.value.startDate}..${dateField.value.endDate}${orgFilterQuery}&per_page=100`
       );
-      const commitsDataRes = await commitsData.json();
-      const myCommits = commitsDataRes.items.filter(
+      const myCommits = commitsData.items.filter(
         (commit: any) => commit.committer?.login?.toLowerCase() === usernameField.value.toLowerCase()
       );
       const commits: any = [];
@@ -390,11 +390,10 @@ export default function Home() {
         commit.type = "commit-created";
         commit.title = commit_message_lines[0];
         commit.created_at = commit.commit.committer.date;
-        const linkedPRQuery = await ghfetch(commit.url + "/pulls");
-        const linkedPRRes = await linkedPRQuery.json();
+        const linkedPRs = await ghfetch(commit.url + "/pulls");
         let isLinkedPRPresent = false;
-        for (const linkedPR of linkedPRRes) {
-          for (const pr of prDataRes.items) {
+        for (const linkedPR of linkedPRs) {
+          for (const pr of prData.items) {
             if (linkedPR.node_id === pr.node_id) {
               isLinkedPRPresent = true;
               break;
@@ -404,14 +403,14 @@ export default function Home() {
         if (!isLinkedPRPresent) commits.push(commit);
       }
 
-      const mergedTimeline: any = [...issuesDataRes.items, ...prDataRes.items, ...assignedIssues, ...commits].sort(
+      const mergedTimeline: any = [...issuesData.items, ...prData.items, ...assignedIssues, ...commits].sort(
         (a: { created_at: string; assigned_at?: string }, b: { created_at: string; assigned_at?: string }) =>
           dayjs(a.assigned_at || a.created_at).isAfter(dayjs(b.assigned_at || b.created_at)) ? -1 : 1
       );
 
       setActivity({
-        prs: prDataRes.items,
-        issues_created: issuesDataRes.items,
+        prs: prData.items,
+        issues_created: issuesData.items,
         issues_assigned: assignedIssues,
         merged: mergedTimeline,
         commits: commits,
@@ -419,7 +418,8 @@ export default function Home() {
       });
       setFetchBtnState("success");
     } catch (error: any) {
-      notify("error", "Error", "Something went wrong while fetching your GitHub stats\n" + error.message);
+      notify("error", "Error", "Something went wrong while fetching your GitHub stats: " + error.message);
+      setFetchBtnState("error");
     }
   }
 
@@ -649,45 +649,50 @@ export default function Home() {
             </div>
           )}
           <Divider />
-          {activity.merged.length > 0 && (
-            <div className="">
-              <ConfigProvider
-                theme={{
-                  token: {
-                    padding: 12,
-                  },
-                }}
-              >
-                <Timeline
-                  mode="left"
-                  reverse
-                  items={activity.merged.map((activity: any) => ({
-                    label: (
-                      <div className="flex justify-between">
-                        <a
-                          href={activity.html_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="italic w-[182px] whitespace-nowrap overflow-hidden overflow-ellipsis text-left"
-                          style={{ direction: "rtl" }}
-                        >
-                          {activity.repository_url?.split("/repos/")?.[1] ||
-                            activity.repository.full_name ||
-                            "-" + activity.type}
-                          <span className="font-medium">{"#" + (activity.number || activity.sha?.slice(0, 6))}</span>
-                        </a>
-                        {"  "}
-                        <p>{dayjs(activity.assigned_at || activity.created_at).format("Do MMMM YYYY h:mm A")}</p>
-                      </div>
-                    ),
-                    color: "green",
-                    dot: getTimelineDot(activity.type),
-                    children: activity.title,
-                  }))}
-                />
-              </ConfigProvider>
-            </div>
-          )}
+          {fetchBtnState === "success" &&
+            (activity.merged.length > 0 ? (
+              <div className="">
+                <ConfigProvider
+                  theme={{
+                    token: {
+                      padding: 12,
+                    },
+                  }}
+                >
+                  <Timeline
+                    mode="left"
+                    reverse
+                    items={activity.merged.map((activity: any) => ({
+                      label: (
+                        <div className="flex justify-between">
+                          <a
+                            href={activity.html_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="italic w-[182px] whitespace-nowrap overflow-hidden overflow-ellipsis text-left"
+                            style={{ direction: "rtl" }}
+                          >
+                            {activity.repository_url?.split("/repos/")?.[1] ||
+                              activity.repository.full_name ||
+                              "-" + activity.type}
+                            <span className="font-medium">{"#" + (activity.number || activity.sha?.slice(0, 6))}</span>
+                          </a>
+                          {"  "}
+                          <p>{dayjs(activity.assigned_at || activity.created_at).format("Do MMMM YYYY h:mm A")}</p>
+                        </div>
+                      ),
+                      color: "green",
+                      dot: getTimelineDot(activity.type),
+                      children: activity.title,
+                    }))}
+                  />
+                </ConfigProvider>
+              </div>
+            ) : (
+              <div className="text-center">
+                <Text type="secondary">No activity found</Text>
+              </div>
+            ))}
           {activity.merged.length > 0 && (
             <>
               <Divider className="my-1" />
