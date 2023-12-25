@@ -137,6 +137,10 @@ export default function Home() {
     const githubToken = localStorage.getItem("githubToken");
     if (githubToken) {
       setGithubTokenInput(githubToken);
+      setSettings({
+        ...settings,
+        fetchGithubToken: githubToken,
+      });
     }
     async function prefill() {
       if (searchParams.get("username")) {
